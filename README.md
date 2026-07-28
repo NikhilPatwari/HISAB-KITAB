@@ -90,17 +90,38 @@ posted again — owners only.
 | --- | --- | --- |
 | JDK | 21+ | **not installed** |
 | Maven | 3.9+ | **not installed** |
-| PostgreSQL | 16 (or Docker) | **not installed** |
+| PostgreSQL | 14+, installed locally | **not installed** |
 | Node | 20+ | installed ✓ |
 
 ### 1. Database
 
+Install PostgreSQL from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/)
+and keep the default port 5432. The installer creates a `postgres` superuser and asks you to
+set its password.
+
+Then create the app's role and database once:
+
 ```bash
-docker compose up -d db
+psql -U postgres -f backend/db/setup.sql
 ```
 
-Or point the backend at an existing PostgreSQL via `DB_URL`, `DB_USER`, `DB_PASSWORD`.
-Flyway creates the schema on first start.
+On Windows `psql` is usually not on `PATH`. Either add `C:\Program Files\PostgreSQL\<version>\bin`
+to it, or call it in full from PowerShell:
+
+```powershell
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -f backend/db/setup.sql
+```
+
+The script is safe to re-run. Flyway creates the tables on first backend start.
+
+**Prefer to skip the dedicated role?** Point the backend at the superuser instead — fine for a
+laptop, not for anything shared:
+
+```powershell
+$env:DB_URL = "jdbc:postgresql://localhost:5432/postgres"
+$env:DB_USER = "postgres"
+$env:DB_PASSWORD = "yourpassword"
+```
 
 ### 2. Backend
 
@@ -171,7 +192,8 @@ backend/src/main/java/com/hisabkitab/
   web/          controllers + dto/
   config/       security, properties, first-run bootstrap
   exception/
-backend/src/main/resources/db/migration/   Flyway
+backend/src/main/resources/db/migration/   Flyway migrations (schema)
+backend/db/setup.sql                       one-time role + database creation
 
 frontend/src/
   lib/          api client, types, TanStack Query hooks, formatting
