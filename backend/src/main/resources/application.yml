@@ -40,7 +40,11 @@ hisabkitab:
     secret: ${JWT_SECRET:change-me-in-production-hisab-kitab-farm-ledger-secret-key}
     expiry-hours: ${JWT_EXPIRY_HOURS:720}
   cors:
-    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:4173}
+    # Origin *patterns*, not exact origins: the dev server port moves when 5173 is
+    # taken, 127.0.0.1 and localhost are different origins to a browser, and a
+    # phone testing the mobile layout arrives from a LAN address.
+    # Narrow this to the real origins when deploying.
+    allowed-origins: '${CORS_ORIGINS:http://localhost:[*],http://127.0.0.1:[*],http://192.168.*:[*],http://10.*:[*]}'
   bootstrap:
     # Creates the first organization + owner login on an empty database.
     enabled: ${BOOTSTRAP_ENABLED:true}

@@ -2,6 +2,8 @@ package com.hisabkitab.config;
 
 import com.hisabkitab.security.AppUserDetailsService;
 import com.hisabkitab.security.JwtAuthFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -23,6 +25,8 @@ import java.util.List;
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private final AppProperties properties;
 
@@ -64,11 +68,18 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        List<String> patterns = properties.getCors().getAllowedOrigins();
+        log.info("CORS allowed origin patterns: {}", patterns);
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(properties.getCors().getAllowedOrigins());
+        // Patterns rather than exact origins, so a moved dev-server port or a
+        // phone on the same wifi does not get a blanket 403.
+        config.setAllowedOriginPatterns(patterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);
+        // The token travels in an Authorization header, never a cookie, so
+        // credentials mode buys nothing and would force the patterns to be exact.
+        config.setAllowCredentials(false);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

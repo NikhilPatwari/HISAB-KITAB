@@ -151,6 +151,26 @@ cd frontend && npm install && npm run dev
 Serves on `http://localhost:5173` and proxies `/api` to port 8080, so there are no CORS
 round trips in development.
 
+### Troubleshooting
+
+**403 with `Invalid CORS request` on login.** The browser's `Origin` is not in
+`hisabkitab.cors.allowed-origins`. This check runs before authentication, so even the
+`permitAll` login endpoint returns 403. The backend logs the active patterns at startup:
+
+```
+CORS allowed origin patterns: [http://localhost:[*], http://127.0.0.1:[*], ...]
+```
+
+Compare that against the `Origin` request header in your browser's network tab. Note that
+`http://localhost:5173` and `http://127.0.0.1:5173` are *different* origins to a browser.
+To allow another one:
+
+```powershell
+$env:CORS_ORIGINS = "http://localhost:[*],http://192.168.1.50:[*]"
+```
+
+`[*]` wildcards the port. Restart the backend after changing it.
+
 ---
 
 ## API
