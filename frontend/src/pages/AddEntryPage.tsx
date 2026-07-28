@@ -131,7 +131,7 @@ export default function AddEntryPage() {
                 </div>
                 <span
                   className={`text-sm font-semibold ${
-                    employee.balance < 0 ? 'text-credit-600' : 'text-slate-400'
+                    employee.balance < 0 ? 'text-debit-600' : 'text-slate-400'
                   }`}
                 >
                   {employee.balance < 0 ? absMoney(employee.balance) : '—'}

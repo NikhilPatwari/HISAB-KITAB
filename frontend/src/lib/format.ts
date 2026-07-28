@@ -75,9 +75,9 @@ export function balanceLabel(balance: number): {
     return { text: 'Settled up', amount: '', tone: 'settled' }
   }
   if (balance < 0) {
-    return { text: 'owes you', amount: absMoney(balance), tone: 'credit' }
+    return { text: 'owes you', amount: absMoney(balance), tone: 'debit' }
   }
-  return { text: 'you owe', amount: absMoney(balance), tone: 'debit' }
+  return { text: 'you owe', amount: absMoney(balance), tone: 'credit' }
 }
 
 /** Days worked, shown as 25 or 25.5 rather than 25.0. */

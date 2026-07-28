@@ -33,8 +33,8 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
 }
 
 /**
- * The signed balance in Splitwise's phrasing: green when the employee owes the
- * farm, orange when the farm owes the employee.
+ * The signed balance in Splitwise's phrasing. Red when the worker owes the farm,
+ * because that is the money still outstanding; green when the farm owes them.
  */
 export function BalanceText({
   balance,
@@ -47,7 +47,7 @@ export function BalanceText({
 }) {
   const settled = Math.abs(balance) < 0.005
   const owesYou = balance < 0
-  const tone = settled ? 'text-slate-400' : owesYou ? 'text-credit-600' : 'text-debit-600'
+  const tone = settled ? 'text-slate-400' : owesYou ? 'text-debit-600' : 'text-credit-600'
   const amountSize = size === 'lg' ? 'text-2xl' : size === 'sm' ? 'text-sm' : 'text-base'
 
   return (

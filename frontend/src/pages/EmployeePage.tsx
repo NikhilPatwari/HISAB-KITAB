@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { format, startOfMonth, startOfYear, subMonths } from 'date-fns'
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -12,13 +13,32 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { useEmployee, useEmployeeMonth, useStatement, useVoidEntry } from '@/lib/queries'
-import { absMoney, currentYearMonth, days, money, monthLabel, relativeDate } from '@/lib/format'
+import {
+  absMoney,
+  currentYearMonth,
+  days,
+  fullDate,
+  money,
+  monthLabel,
+  relativeDate,
+  todayIso,
+} from '@/lib/format'
 import { errorMessage } from '@/lib/api'
 import { BackButton, PageHeader } from '@/components/AppLayout'
 import { Avatar, EmptyState, ErrorNote, SectionTitle, Spinner } from '@/components/ui'
 import type { StatementRow } from '@/lib/types'
 
 type Tab = 'ledger' | 'attendance' | 'about'
+
+type RangeKey = 'all' | 'month' | 'quarter' | 'year' | 'custom'
+
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: 'all', label: 'All time' },
+  { key: 'month', label: 'This month' },
+  { key: 'quarter', label: 'Last 3 months' },
+  { key: 'year', label: 'This year' },
+  { key: 'custom', label: 'Custom' },
+]
 
 export default function EmployeePage() {
   const { id } = useParams()
@@ -30,8 +50,30 @@ export default function EmployeePage() {
   const [month, setMonth] = useState(currentYearMonth())
   const [error, setError] = useState<string | null>(null)
 
+  const [range, setRange] = useState<RangeKey>('all')
+  const [customFrom, setCustomFrom] = useState(
+    format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'),
+  )
+  const [customTo, setCustomTo] = useState(todayIso())
+
+  const dateWindow = useMemo(() => {
+    const now = new Date()
+    switch (range) {
+      case 'month':
+        return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: todayIso() }
+      case 'quarter':
+        return { from: format(startOfMonth(subMonths(now, 2)), 'yyyy-MM-dd'), to: todayIso() }
+      case 'year':
+        return { from: format(startOfYear(now), 'yyyy-MM-dd'), to: todayIso() }
+      case 'custom':
+        return { from: customFrom || undefined, to: customTo || undefined }
+      default:
+        return { from: undefined, to: undefined }
+    }
+  }, [range, customFrom, customTo])
+
   const employee = useEmployee(employeeId)
-  const statement = useStatement(employeeId)
+  const statement = useStatement(employeeId, dateWindow)
   const attendance = useEmployeeMonth(employeeId, month)
   const voidEntry = useVoidEntry()
 
@@ -129,17 +171,72 @@ export default function EmployeePage() {
 
       {tab === 'ledger' && (
         <>
+          <div className="border-b border-slate-200 bg-white px-3 py-2.5">
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+              {RANGES.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setRange(option.key)}
+                  className={`chip shrink-0 transition ${
+                    range === option.key
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {range === 'custom' && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="date"
+                  className="input py-2 text-sm"
+                  value={customFrom}
+                  max={customTo || todayIso()}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  aria-label="From date"
+                />
+                <span className="text-xs text-slate-400">to</span>
+                <input
+                  type="date"
+                  className="input py-2 text-sm"
+                  value={customTo}
+                  min={customFrom}
+                  max={todayIso()}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  aria-label="To date"
+                />
+              </div>
+            )}
+          </div>
+
           {statement.isLoading ? (
             <Spinner />
           ) : !statement.data || statement.data.rows.length === 0 ? (
             <EmptyState
               icon={<Receipt className="h-10 w-10" />}
-              title="No entries yet"
-              hint="Advances, repayments and monthly wages will appear here."
+              title={range === 'all' ? 'No entries yet' : 'Nothing in this period'}
+              hint={
+                range === 'all'
+                  ? 'Advances, repayments and monthly wages will appear here.'
+                  : 'Widen the date range to see earlier entries.'
+              }
               action={
-                <button className="btn-primary mt-1" onClick={() => navigate(`/add?employeeId=${person.id}`)}>
-                  <Plus className="h-4 w-4" /> Add an entry
-                </button>
+                range === 'all' ? (
+                  <button
+                    className="btn-primary mt-1"
+                    onClick={() => navigate(`/add?employeeId=${person.id}`)}
+                  >
+                    <Plus className="h-4 w-4" /> Add an entry
+                  </button>
+                ) : (
+                  <button className="btn-ghost mt-1" onClick={() => setRange('all')}>
+                    Show all time
+                  </button>
+                )
               }
             />
           ) : (
@@ -156,6 +253,23 @@ export default function EmployeePage() {
                   tone="text-credit-600"
                 />
               </div>
+
+              {/* Without this the filtered running balance would look like it
+                  starts from nothing. */}
+              {range !== 'all' && (
+                <div className="mx-3 flex items-center justify-between rounded-xl bg-white px-4 py-2.5 shadow-card">
+                  <span className="text-sm text-slate-500">
+                    Balance before {fullDate(statement.data.from)}
+                  </span>
+                  <span
+                    className={`text-sm font-bold ${
+                      statement.data.openingBalance < 0 ? 'text-debit-600' : 'text-credit-600'
+                    }`}
+                  >
+                    {absMoney(statement.data.openingBalance)}
+                  </span>
+                </div>
+              )}
 
               <SectionTitle>Statement</SectionTitle>
               <ul className="divide-y divide-slate-100 bg-white">

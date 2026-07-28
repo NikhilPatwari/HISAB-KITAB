@@ -17,19 +17,19 @@ export default {
           800: '#14554a',
           900: '#13473f',
         },
-        // Money the farm is owed.
+        // Green: the farm owes the worker. Nothing to chase.
         credit: {
           50: '#f0fdf4',
           500: '#16a34a',
           600: '#15803d',
           700: '#166534',
         },
-        // Money the farm owes out.
+        // Red: the worker owes the farm — an advance still to be worked off.
         debit: {
-          50: '#fff7ed',
-          500: '#ea580c',
-          600: '#c2410c',
-          700: '#9a3412',
+          50: '#fef2f2',
+          500: '#ef4444',
+          600: '#dc2626',
+          700: '#b91c1c',
         },
       },
       fontFamily: {

@@ -141,7 +141,7 @@ export default function EmployersPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-[11px] uppercase tracking-wide text-slate-400">out</p>
-                  <p className="font-bold text-credit-600">{absMoney(employer.netOutstanding)}</p>
+                  <p className="font-bold text-debit-600">{absMoney(employer.netOutstanding)}</p>
                 </div>
               </button>
             </li>

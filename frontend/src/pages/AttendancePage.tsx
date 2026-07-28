@@ -23,6 +23,9 @@ export default function AttendancePage() {
   const [search, setSearch] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<number | null>(null)
+  // Note text being edited, keyed by employee. Absent key means "show what the
+  // server has"; the roster is the source of truth once a save lands.
+  const [notes, setNotes] = useState<Record<number, string>>({})
 
   const roster = useRoster(date)
   const mark = useMarkAttendance()
@@ -46,16 +49,42 @@ export default function AttendancePage() {
     }
   }, [roster.data])
 
-  async function setStatus(employeeId: number, status: AttendanceStatus | null) {
+  async function setStatus(
+    employeeId: number,
+    status: AttendanceStatus | null,
+    note?: string | null,
+  ) {
     setError(null)
     setPending(employeeId)
     try {
-      await mark.mutateAsync({ employeeId, workDate: date, status })
+      await mark.mutateAsync({ employeeId, workDate: date, status, note: note ?? null })
+      // Clearing the mark deletes the row, so drop any note drafted against it.
+      if (status === null) {
+        setNotes((prev) => {
+          const next = { ...prev }
+          delete next[employeeId]
+          return next
+        })
+      }
     } catch (err) {
       setError(errorMessage(err, 'Could not save attendance'))
     } finally {
       setPending(null)
     }
+  }
+
+  /** Drafts are keyed by employee, so they must not survive a change of day. */
+  function changeDate(next: string) {
+    setNotes({})
+    setDate(next)
+  }
+
+  /** Saves on blur rather than per keystroke, so one tap out writes one row. */
+  function saveNote(entry: { employeeId: number; status: AttendanceStatus | null; note: string | null }) {
+    const draft = notes[entry.employeeId]
+    if (draft === undefined || !entry.status) return
+    if (draft.trim() === (entry.note ?? '').trim()) return
+    setStatus(entry.employeeId, entry.status, draft.trim() || null)
   }
 
   const isFuture = date >= todayIso()
@@ -69,7 +98,7 @@ export default function AttendancePage() {
         <div className="mt-3 flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setDate(format(subDays(parseISO(date), 1), 'yyyy-MM-dd'))}
+            onClick={() => changeDate(format(subDays(parseISO(date), 1), 'yyyy-MM-dd'))}
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 transition active:bg-white/25"
             aria-label="Previous day"
           >
@@ -80,14 +109,14 @@ export default function AttendancePage() {
             type="date"
             value={date}
             max={todayIso()}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => changeDate(e.target.value)}
             className="flex-1 rounded-xl bg-white/15 px-3 py-2.5 text-center text-sm font-semibold
                        text-white outline-none [color-scheme:dark]"
           />
 
           <button
             type="button"
-            onClick={() => setDate(format(addDays(parseISO(date), 1), 'yyyy-MM-dd'))}
+            onClick={() => changeDate(format(addDays(parseISO(date), 1), 'yyyy-MM-dd'))}
             disabled={isFuture}
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 transition
                        active:bg-white/25 disabled:opacity-30"
@@ -134,39 +163,60 @@ export default function AttendancePage() {
       ) : (
         <ul className="divide-y divide-slate-100 bg-white">
           {visible.map((entry) => (
-            <li key={entry.employeeId} className="flex items-center gap-3 px-4 py-2.5">
-              <Avatar name={entry.employeeName} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {entry.employeeName}
-                </p>
-                {entry.code && <p className="text-[11px] text-slate-400">{entry.code}</p>}
+            <li key={entry.employeeId} className="px-4 py-2.5">
+              <div className="flex items-center gap-3">
+                <Avatar name={entry.employeeName} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {entry.employeeName}
+                  </p>
+                  {entry.code && <p className="text-[11px] text-slate-400">{entry.code}</p>}
+                </div>
+
+                <div
+                  className={`flex overflow-hidden rounded-lg ring-1 ring-inset ring-slate-200 ${
+                    pending === entry.employeeId ? 'opacity-50' : ''
+                  }`}
+                >
+                  {OPTIONS.map((option) => {
+                    const active = entry.status === option.value
+                    return (
+                      <button
+                        key={option.short}
+                        type="button"
+                        disabled={pending === entry.employeeId}
+                        onClick={() =>
+                          setStatus(entry.employeeId, option.value, entry.note)
+                        }
+                        className={`h-9 w-9 text-xs font-bold transition ${
+                          active ? option.classes : 'bg-white text-slate-400'
+                        }`}
+                        aria-label={option.value ?? 'Present'}
+                        aria-pressed={active}
+                      >
+                        {option.short}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
 
-              <div
-                className={`flex overflow-hidden rounded-lg ring-1 ring-inset ring-slate-200 ${
-                  pending === entry.employeeId ? 'opacity-50' : ''
-                }`}
-              >
-                {OPTIONS.map((option) => {
-                  const active = entry.status === option.value
-                  return (
-                    <button
-                      key={option.short}
-                      type="button"
-                      disabled={pending === entry.employeeId}
-                      onClick={() => setStatus(entry.employeeId, option.value)}
-                      className={`h-9 w-9 text-xs font-bold transition ${
-                        active ? option.classes : 'bg-white text-slate-400'
-                      }`}
-                      aria-label={option.value ?? 'Present'}
-                      aria-pressed={active}
-                    >
-                      {option.short}
-                    </button>
-                  )
-                })}
-              </div>
+              {/* Only marked days can carry a note — a plain present day has no row. */}
+              {entry.status && (
+                <input
+                  className="input mt-2 py-2 text-sm"
+                  placeholder="Why? (optional)"
+                  maxLength={255}
+                  value={notes[entry.employeeId] ?? entry.note ?? ''}
+                  onChange={(e) =>
+                    setNotes((prev) => ({ ...prev, [entry.employeeId]: e.target.value }))
+                  }
+                  onBlur={() => saveNote(entry)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                  }}
+                />
+              )}
             </li>
           ))}
         </ul>

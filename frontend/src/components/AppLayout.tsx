@@ -22,17 +22,24 @@ export default function AppLayout() {
       </main>
 
       {showFab && (
-        <button
-          type="button"
-          onClick={() => navigate('/add')}
-          className="fixed bottom-20 left-1/2 z-20 flex h-14 w-14 -translate-x-1/2 items-center
-                     justify-center rounded-full bg-brand-600 text-white shadow-fab
-                     transition active:scale-95 md:left-auto md:ml-[9.5rem] md:translate-x-0"
-          style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
-          aria-label="Add an entry"
+        // The shell is a centred max-w-md column, so pinning the button to the
+        // viewport edge would strand it far from the app on a wide screen. This
+        // wrapper tracks the column instead and right-aligns inside it.
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-20 z-20 mx-auto flex w-full
+                     max-w-md justify-end px-4"
         >
-          <Plus className="h-7 w-7" strokeWidth={2.5} />
-        </button>
+          <button
+            type="button"
+            onClick={() => navigate('/add')}
+            className="pointer-events-auto flex h-14 w-14 items-center justify-center
+                       rounded-full bg-brand-600 text-white shadow-fab transition active:scale-95"
+            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+            aria-label="Add an entry"
+          >
+            <Plus className="h-7 w-7" strokeWidth={2.5} />
+          </button>
+        </div>
       )}
 
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-10 mx-auto w-full max-w-md border-t border-slate-200 bg-white/95 backdrop-blur">

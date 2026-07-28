@@ -52,13 +52,18 @@ export function useEmployee(id: number | undefined) {
   })
 }
 
-export function useStatement(id: number | undefined, includeVoided = false) {
+/** Omitting `from`/`to` lets the backend fall back to its five-year window. */
+export function useStatement(
+  id: number | undefined,
+  options?: { from?: string; to?: string; includeVoided?: boolean },
+) {
+  const { from, to, includeVoided = false } = options ?? {}
   return useQuery({
-    queryKey: ['statement', id, includeVoided],
+    queryKey: ['statement', id, from ?? null, to ?? null, includeVoided],
     enabled: id != null,
     queryFn: async () =>
       (await api.get<StatementResponse>(`/transactions/statement/${id}`, {
-        params: { includeVoided },
+        params: { from, to, includeVoided },
       })).data,
   })
 }
