@@ -7,12 +7,12 @@ spring:
   application:
     name: hisabkitab
   datasource:
-    # Points at a PostgreSQL installed on this machine. Create the role and
-    # database once with backend/db/setup.sql, or override these to use the
-    # `postgres` superuser directly.
+    # Points at a PostgreSQL installed on this machine, connecting as the
+    # superuser the installer created. Create the database once with
+    # backend/db/setup.sql.
     url: ${DB_URL:jdbc:postgresql://localhost:5432/hisabkitab}
-    username: ${DB_USER:hisabkitab}
-    password: ${DB_PASSWORD:hisabkitab}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:root}
     hikari:
       # A local server is not a pool of one, but a farm office does not need 10.
       maximum-pool-size: ${DB_POOL_SIZE:5}

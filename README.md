@@ -97,9 +97,10 @@ posted again — owners only.
 
 Install PostgreSQL from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/)
 and keep the default port 5432. The installer creates a `postgres` superuser and asks you to
-set its password.
+set its password — the backend expects that password to be `root`, so either set it to that
+or override `DB_PASSWORD`.
 
-Then create the app's role and database once:
+Then create the database once:
 
 ```bash
 psql -U postgres -f backend/db/setup.sql
@@ -114,13 +115,13 @@ to it, or call it in full from PowerShell:
 
 The script is safe to re-run. Flyway creates the tables on first backend start.
 
-**Prefer to skip the dedicated role?** Point the backend at the superuser instead — fine for a
-laptop, not for anything shared:
+The backend connects as `postgres` / `root` by default. That is a superuser on your own
+laptop and nothing more, but anything shared or reachable needs a dedicated role with a real
+password, set through `DB_USER` and `DB_PASSWORD`:
 
 ```powershell
-$env:DB_URL = "jdbc:postgresql://localhost:5432/postgres"
-$env:DB_USER = "postgres"
-$env:DB_PASSWORD = "yourpassword"
+$env:DB_USER = "hisabkitab"
+$env:DB_PASSWORD = "something-long-and-random"
 ```
 
 ### 2. Backend
