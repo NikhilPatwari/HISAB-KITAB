@@ -5,14 +5,32 @@ import { useMarkAttendance, useRoster } from '@/lib/queries'
 import { errorMessage } from '@/lib/api'
 import { todayIso } from '@/lib/format'
 import { Avatar, ErrorNote, Spinner } from '@/components/ui'
-import type { AttendanceStatus } from '@/lib/types'
+import type { AttendanceStatus, EmployeeType, RosterEntry } from '@/lib/types'
 
-const OPTIONS: { value: AttendanceStatus | null; short: string; classes: string }[] = [
-  { value: null, short: 'P', classes: 'bg-credit-500 text-white' },
-  { value: 'ABSENT', short: 'A', classes: 'bg-red-500 text-white' },
-  { value: 'HALF_DAY', short: '½', classes: 'bg-amber-500 text-white' },
-  { value: 'OVERTIME', short: 'OT', classes: 'bg-sky-500 text-white' },
+type Option = { value: AttendanceStatus | null; short: string; classes: string; label: string }
+
+/**
+ * Permanent workers are present unless marked, so clearing the mark (null) is
+ * "present". Temporary workers earn nothing unless marked, so presence has to
+ * be an explicit PRESENT row and clearing means "did not work".
+ */
+const PERMANENT_OPTIONS: Option[] = [
+  { value: null, short: 'P', classes: 'bg-credit-500 text-white', label: 'Present' },
+  { value: 'ABSENT', short: 'A', classes: 'bg-red-500 text-white', label: 'Absent' },
+  { value: 'HALF_DAY', short: '½', classes: 'bg-amber-500 text-white', label: 'Half day' },
+  { value: 'OVERTIME', short: 'OT', classes: 'bg-sky-500 text-white', label: 'Overtime' },
 ]
+
+const TEMPORARY_OPTIONS: Option[] = [
+  { value: null, short: '—', classes: 'bg-slate-400 text-white', label: 'Did not work' },
+  { value: 'PRESENT', short: 'P', classes: 'bg-credit-500 text-white', label: 'Present' },
+  { value: 'HALF_DAY', short: '½', classes: 'bg-amber-500 text-white', label: 'Half day' },
+  { value: 'OVERTIME', short: 'OT', classes: 'bg-sky-500 text-white', label: 'Overtime' },
+]
+
+function optionsFor(type: EmployeeType): Option[] {
+  return type === 'PERMANENT' ? PERMANENT_OPTIONS : TEMPORARY_OPTIONS
+}
 
 /**
  * Presence is the default, so this screen is about marking the exceptions.
@@ -42,9 +60,18 @@ export default function AttendancePage() {
 
   const counts = useMemo(() => {
     const rows = roster.data?.employees ?? []
+    // An unmarked day is a worked day for permanent staff and a non-worked day
+    // for temporary staff, so the tallies cannot key off status alone.
+    const worked = (e: RosterEntry) =>
+      e.status === null
+        ? e.employeeType === 'PERMANENT'
+        : e.status === 'PRESENT' || e.status === 'OVERTIME' || e.status === 'PAID_LEAVE'
+
     return {
-      present: rows.filter((e) => e.status === null || e.status === 'OVERTIME').length,
-      absent: rows.filter((e) => e.status === 'ABSENT').length,
+      present: rows.filter(worked).length,
+      absent: rows.filter(
+        (e) => e.status === 'ABSENT' || (e.status === null && e.employeeType !== 'PERMANENT'),
+      ).length,
       half: rows.filter((e) => e.status === 'HALF_DAY').length,
     }
   }, [roster.data])
@@ -178,7 +205,7 @@ export default function AttendancePage() {
                     pending === entry.employeeId ? 'opacity-50' : ''
                   }`}
                 >
-                  {OPTIONS.map((option) => {
+                  {optionsFor(entry.employeeType).map((option) => {
                     const active = entry.status === option.value
                     return (
                       <button

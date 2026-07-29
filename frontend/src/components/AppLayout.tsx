@@ -1,46 +1,27 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { CalendarCheck, Home, Plus, Users, Wallet } from 'lucide-react'
+import { NavLink, Outlet } from 'react-router-dom'
+import { CalendarCheck, ClipboardList, Home, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+// No Wages tab: completed months close themselves, so there is nothing to post.
+// Work earns a tab instead — logging units is a daily job, not configuration.
 const TABS = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/attendance', label: 'Attendance', icon: CalendarCheck, end: false },
-  { to: '/wages', label: 'Wages', icon: Wallet, end: false },
+  // "Contract Work" in full does not fit a quarter of a phone width.
+  { to: '/work', label: 'Contract', icon: ClipboardList, end: true },
   { to: '/people', label: 'People', icon: Users, end: false },
 ]
 
-/** Phone-shaped shell with a bottom tab bar and a floating add button. */
+/**
+ * Phone-shaped shell with a bottom tab bar. No floating button: each screen
+ * puts its own primary action inline, where it cannot cover a list row.
+ */
 export default function AppLayout() {
-  const navigate = useNavigate()
-  const { pathname } = useLocation()
-  const showFab = !pathname.startsWith('/add')
-
   return (
     <div className="app-shell">
-      <main className="flex-1 pb-24">
+      <main className="flex-1 pb-20">
         <Outlet />
       </main>
-
-      {showFab && (
-        // The shell is a centred max-w-md column, so pinning the button to the
-        // viewport edge would strand it far from the app on a wide screen. This
-        // wrapper tracks the column instead and right-aligns inside it.
-        <div
-          className="pointer-events-none fixed inset-x-0 bottom-20 z-20 mx-auto flex w-full
-                     max-w-md justify-end px-4"
-        >
-          <button
-            type="button"
-            onClick={() => navigate('/add')}
-            className="pointer-events-auto flex h-14 w-14 items-center justify-center
-                       rounded-full bg-brand-600 text-white shadow-fab transition active:scale-95"
-            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
-            aria-label="Add an entry"
-          >
-            <Plus className="h-7 w-7" strokeWidth={2.5} />
-          </button>
-        </div>
-      )}
 
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-10 mx-auto w-full max-w-md border-t border-slate-200 bg-white/95 backdrop-blur">
         <ul className="flex">

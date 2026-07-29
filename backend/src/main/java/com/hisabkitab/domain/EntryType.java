@@ -23,6 +23,9 @@ public enum EntryType {
     /** Wages earned for a period. Normally created by a wage run. */
     WAGE(+1, "Wages earned"),
 
+    /** Piece-rate earnings for units of work completed. Also created by a wage run. */
+    PIECE_WORK(+1, "Work completed"),
+
     /** Extra payment on top of wages. */
     BONUS(+1, "Bonus"),
 

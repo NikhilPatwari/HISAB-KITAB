@@ -2,6 +2,7 @@ package com.hisabkitab.service;
 
 import com.hisabkitab.domain.AttendanceStatus;
 import com.hisabkitab.domain.Employee;
+import com.hisabkitab.domain.EmployeeType;
 import com.hisabkitab.domain.Organization;
 import com.hisabkitab.domain.WageRate;
 import org.junit.jupiter.api.Test;
@@ -169,6 +170,71 @@ class WageCalculatorTest {
         assertThat(result.payableDays()).isEqualByComparingTo("0");
         assertThat(result.amount()).isEqualByComparingTo("0.00");
         assertThat(result.effectiveRate()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void payTemporaryWorkersOnlyForDaysMarkedPresent() {
+        Organization org = organization();
+        Employee employee = employee(LocalDate.of(2026, 1, 1), 400);
+        employee.setEmployeeType(EmployeeType.TEMPORARY);
+
+        Map<LocalDate, AttendanceStatus> marks = new HashMap<>();
+        marks.put(LocalDate.of(2026, 7, 6), AttendanceStatus.PRESENT);
+        marks.put(LocalDate.of(2026, 7, 7), AttendanceStatus.PRESENT);
+        marks.put(LocalDate.of(2026, 7, 8), AttendanceStatus.HALF_DAY);
+
+        WageCalculator.Result result = calculator.compute(
+                org, employee, JULY_START, JULY_END, marks, rates(employee, 400));
+
+        // The other 28 days were never marked, so they earn nothing.
+        assertThat(result.payableDays()).isEqualByComparingTo("2.5");
+        assertThat(result.amount()).isEqualByComparingTo("1000.00");
+        assertThat(result.absentDays()).isEqualTo(28);
+    }
+
+    @Test
+    void earnNothingWhenATemporaryWorkerIsNeverMarked() {
+        Organization org = organization();
+        Employee employee = employee(LocalDate.of(2026, 1, 1), 400);
+        employee.setEmployeeType(EmployeeType.TEMPORARY);
+
+        WageCalculator.Result result = calculator.compute(
+                org, employee, JULY_START, JULY_END, Map.of(), rates(employee, 400));
+
+        assertThat(result.amount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void payContractWorkersNothingFromDays() {
+        Organization org = organization();
+        Employee employee = employee(LocalDate.of(2026, 1, 1), 400);
+        employee.setEmployeeType(EmployeeType.CONTRACT);
+
+        // Even a stray attendance row must not turn into a daily wage.
+        Map<LocalDate, AttendanceStatus> marks =
+                Map.of(LocalDate.of(2026, 7, 6), AttendanceStatus.PRESENT);
+
+        WageCalculator.Result result = calculator.compute(
+                org, employee, JULY_START, JULY_END, marks, rates(employee, 400));
+
+        assertThat(result.eligibleDays()).isZero();
+        assertThat(result.amount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void treatPresentAsTheBaselineForPermanentWorkers() {
+        Organization org = organization();
+        Employee employee = employee(LocalDate.of(2026, 1, 1), 400);
+
+        // Redundant for a permanent worker, but it must not double-count.
+        Map<LocalDate, AttendanceStatus> marks =
+                Map.of(LocalDate.of(2026, 7, 6), AttendanceStatus.PRESENT);
+
+        WageCalculator.Result result = calculator.compute(
+                org, employee, JULY_START, JULY_END, marks, rates(employee, 400));
+
+        assertThat(result.payableDays()).isEqualByComparingTo("31");
+        assertThat(result.amount()).isEqualByComparingTo("12400.00");
     }
 
     private static Organization organization() {

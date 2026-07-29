@@ -71,10 +71,15 @@ public final class AttendanceDtos {
             List<RosterEntry> employees) {
     }
 
+    /**
+     * @param employeeType the UI needs this to know whether an unmarked day
+     *                     means "present" or "did not work"
+     */
     public record RosterEntry(
             Long employeeId,
             String employeeName,
             String code,
+            com.hisabkitab.domain.EmployeeType employeeType,
             AttendanceStatus status,
             String note) {
     }

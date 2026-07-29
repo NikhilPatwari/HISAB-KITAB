@@ -49,9 +49,15 @@ public class Employee {
     @Column(length = 160)
     private String village;
 
+    /** How this worker earns. Governs attendance and the wage engine alike. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "employee_type", nullable = false, length = 16)
+    private EmployeeType employeeType = EmployeeType.PERMANENT;
+
     /**
      * Current rate, denormalised for listing screens. The authoritative history
-     * lives in {@link WageRate} and is what wage runs actually read.
+     * lives in {@link WageRate} and is what wage runs actually read. Zero for
+     * contract workers, who are paid per unit instead.
      */
     @Column(name = "daily_wage_rate", nullable = false, precision = 14, scale = 2)
     private BigDecimal dailyWageRate = BigDecimal.ZERO;
@@ -79,6 +85,14 @@ public class Employee {
     @PreUpdate
     void onUpdate() {
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * The fraction of a day earned when no attendance row exists. Permanent
+     * workers are present by default; temporary workers must be marked.
+     */
+    public java.math.BigDecimal defaultDayFraction() {
+        return employeeType.presentByDefault() ? BigDecimal.ONE : BigDecimal.ZERO;
     }
 
     /** True when the employee was on the books on the given day. */

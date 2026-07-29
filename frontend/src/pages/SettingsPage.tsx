@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, HandCoins, LogOut } from 'lucide-react'
+import { CalendarClock, ChevronRight, ClipboardList, HandCoins, LogOut } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { useOrganization } from '@/lib/queries'
 import { api, errorMessage } from '@/lib/api'
@@ -141,6 +141,34 @@ export default function SettingsPage() {
             </span>
             <span className="flex-1 font-medium text-slate-900">Employers</span>
             <ChevronRight className="h-4 w-4 text-slate-300" />
+          </button>
+        </li>
+        <li>
+          <button type="button" className="list-row" onClick={() => navigate('/tasks')}>
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+              <ClipboardList className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-slate-900">Tasks</span>
+              <span className="block text-xs text-slate-500">
+                Piece-rate jobs and their prices
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+          </button>
+        </li>
+        <li>
+          <button type="button" className="list-row" onClick={() => navigate('/wage-runs')}>
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-700">
+              <CalendarClock className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-slate-900">Correct a past month</span>
+              <span className="block text-xs text-slate-500">
+                Reopen a closed month to fix its attendance
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
           </button>
         </li>
       </ul>

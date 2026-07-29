@@ -5,6 +5,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { useEmployees, useEmployers } from '@/lib/queries'
 import { absMoney, money, relativeDate } from '@/lib/format'
 import { Avatar, BalanceText, EmptyState, SectionTitle, Spinner } from '@/components/ui'
+import { EMPLOYEE_TYPES } from '@/lib/types'
 
 /** Directory of everyone in the ledger: workers, and the partners who fund advances. */
 export default function PeoplePage() {
@@ -78,7 +79,13 @@ export default function PeoplePage() {
                     )}
                   </p>
                   <p className="truncate text-xs text-slate-500">
-                    {money(employee.dailyWageRate)}/day · since {relativeDate(employee.joinedOn)}
+                    {employee.employeeType === 'CONTRACT'
+                      ? 'Per unit'
+                      : `${money(employee.dailyWageRate)}/day`}
+                    {employee.employeeType !== 'PERMANENT' &&
+                      ` · ${EMPLOYEE_TYPES.find((t) => t.value === employee.employeeType)?.label}`}
+                    {' · since '}
+                    {relativeDate(employee.joinedOn)}
                   </p>
                 </div>
                 <BalanceText balance={employee.balance} size="sm" />

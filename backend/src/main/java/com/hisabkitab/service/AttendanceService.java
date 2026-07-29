@@ -108,6 +108,9 @@ public class AttendanceService {
 
         List<Employee> onBooks = employees.findEmployedDuring(organizationId, date, date).stream()
                 .filter(e -> e.getStatus() == EmployeeStatus.ACTIVE || e.isEmployedOn(date))
+                // Contract workers are paid on units delivered, so putting them
+                // on the roster would only invite meaningless marks.
+                .filter(e -> e.getEmployeeType().tracksAttendance())
                 .toList();
 
         Map<Long, Attendance> marked = new HashMap<>();
@@ -118,6 +121,7 @@ public class AttendanceService {
                 .map(e -> {
                     Attendance a = marked.get(e.getId());
                     return new RosterEntry(e.getId(), e.getName(), e.getCode(),
+                            e.getEmployeeType(),
                             a == null ? null : a.getStatus(),
                             a == null ? null : a.getNote());
                 })

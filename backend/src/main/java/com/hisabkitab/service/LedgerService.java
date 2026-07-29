@@ -34,13 +34,16 @@ public class LedgerService {
     private final EmployeeService employeeService;
     private final EmployerService employerService;
     private final OrganizationService organizationService;
+    private final WageAccrualService accrualService;
 
     public LedgerService(LedgerEntryRepository ledger,
                          OrganizationRepository organizations,
                          AppUserRepository users,
                          EmployeeService employeeService,
                          EmployerService employerService,
-                         OrganizationService organizationService) {
+                         OrganizationService organizationService,
+                         WageAccrualService accrualService) {
+        this.accrualService = accrualService;
         this.ledger = ledger;
         this.organizations = organizations;
         this.users = users;
@@ -175,6 +178,11 @@ public class LedgerService {
                     entry.getWageRun() == null ? null : entry.getWageRun().getId()));
         }
 
+        // Wages since the last closed month are not rows yet, so they are
+        // reported alongside rather than folded into the running balance.
+        BigDecimal unposted = accrualService.unpostedFor(organizationId, employeeId);
+        LocalDate unpostedSince = accrualService.accrualStart(organizationId);
+
         return new StatementResponse(
                 employee.getId(),
                 employee.getName(),
@@ -184,6 +192,9 @@ public class LedgerService {
                 Money.scale(running),
                 Money.scale(givenOut),
                 Money.scale(earned),
+                unposted,
+                unpostedSince != null ? unpostedSince : employee.getJoinedOn(),
+                Money.scale(running.add(unposted)),
                 rows);
     }
 

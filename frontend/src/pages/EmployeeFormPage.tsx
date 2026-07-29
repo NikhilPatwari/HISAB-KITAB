@@ -6,12 +6,14 @@ import { errorMessage } from '@/lib/api'
 import { todayIso } from '@/lib/format'
 import { BackButton, PageHeader } from '@/components/AppLayout'
 import { ErrorNote, Field, Spinner } from '@/components/ui'
+import { EMPLOYEE_TYPES, type EmployeeType } from '@/lib/types'
 
 interface FormState {
   code: string
   name: string
   phone: string
   village: string
+  employeeType: EmployeeType
   dailyWageRate: string
   joinedOn: string
   notes: string
@@ -22,6 +24,7 @@ const EMPTY: FormState = {
   name: '',
   phone: '',
   village: '',
+  employeeType: 'PERMANENT',
   dailyWageRate: '',
   joinedOn: todayIso(),
   notes: '',
@@ -46,6 +49,7 @@ export default function EmployeeFormPage() {
       name: person.name,
       phone: person.phone ?? '',
       village: person.village ?? '',
+      employeeType: person.employeeType,
       dailyWageRate: String(person.dailyWageRate),
       joinedOn: person.joinedOn,
       notes: person.notes ?? '',
@@ -60,8 +64,10 @@ export default function EmployeeFormPage() {
     event.preventDefault()
     setError(null)
 
-    const rate = Number(form.dailyWageRate)
-    if (!Number.isFinite(rate) || rate < 0) {
+    // Contract workers earn per unit, so no rate is asked for or sent.
+    const usesDailyWage = form.employeeType !== 'CONTRACT'
+    const rate = usesDailyWage ? Number(form.dailyWageRate) : 0
+    if (usesDailyWage && (!Number.isFinite(rate) || rate < 0)) {
       setError('Enter a valid daily wage')
       return
     }
@@ -72,6 +78,7 @@ export default function EmployeeFormPage() {
         name: form.name.trim(),
         phone: form.phone.trim() || null,
         village: form.village.trim() || null,
+        employeeType: form.employeeType,
         dailyWageRate: rate,
         joinedOn: form.joinedOn,
         notes: form.notes.trim() || null,
@@ -105,24 +112,64 @@ export default function EmployeeFormPage() {
           />
         </Field>
 
-        <Field label="Daily wage" required hint="Used to calculate each month's earnings">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-semibold text-slate-400">
-              ₹
-            </span>
-            <input
-              className="input pl-8"
-              type="number"
-              inputMode="decimal"
-              step="1"
-              min="0"
-              value={form.dailyWageRate}
-              onChange={(e) => set('dailyWageRate', e.target.value)}
-              placeholder="450"
-              required
-            />
+        <div>
+          <span className="label">
+            How are they paid?<span className="ml-0.5 text-red-500">*</span>
+          </span>
+          <div className="space-y-2">
+            {EMPLOYEE_TYPES.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => set('employeeType', option.value)}
+                className={`w-full rounded-xl border px-3.5 py-3 text-left transition ${
+                  form.employeeType === option.value
+                    ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-100'
+                    : 'border-slate-200 bg-white'
+                }`}
+              >
+                <span className="block text-sm font-semibold text-slate-900">{option.label}</span>
+                <span className="block text-xs leading-tight text-slate-500">
+                  {option.description}
+                </span>
+              </button>
+            ))}
           </div>
-        </Field>
+        </div>
+
+        {form.employeeType !== 'CONTRACT' ? (
+          <Field
+            label="Daily wage"
+            required
+            hint={
+              form.employeeType === 'TEMPORARY'
+                ? 'Earned only on days you mark them present'
+                : "Used to calculate each month's earnings"
+            }
+          >
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-semibold text-slate-400">
+                ₹
+              </span>
+              <input
+                className="input pl-8"
+                type="number"
+                inputMode="decimal"
+                step="1"
+                min="0"
+                value={form.dailyWageRate}
+                onChange={(e) => set('dailyWageRate', e.target.value)}
+                placeholder="450"
+                required
+              />
+            </div>
+          </Field>
+        ) : (
+          <p className="rounded-xl bg-slate-100 px-3.5 py-3 text-sm text-slate-600">
+            Contract workers have no daily wage and do not appear on the attendance roster.
+            They earn from the units of work they complete.
+          </p>
+        )}
 
         <Field label="Joined on" required hint="Wages are only counted from this date">
           <input
@@ -182,8 +229,15 @@ export default function EmployeeFormPage() {
 
         {employeeId && (
           <p className="text-center text-xs text-slate-500">
-            Changing the wage here applies from today. Past months already posted keep the rate they
-            were paid at.
+            Changing the wage here applies from today.{' '}
+            <button
+              type="button"
+              className="font-semibold text-brand-700 underline"
+              onClick={() => navigate(`/employees/${employeeId}/wage`)}
+            >
+              Use a dated change
+            </button>{' '}
+            to back-date a raise or start one later.
           </p>
         )}
       </form>

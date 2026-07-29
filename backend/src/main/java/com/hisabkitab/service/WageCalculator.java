@@ -47,6 +47,12 @@ public class WageCalculator {
                           Map<LocalDate, AttendanceStatus> exceptions,
                           List<WageRate> rateHistory) {
 
+        // Contract workers earn from recorded units of work, never from days.
+        // Short-circuiting here means a stray attendance row cannot pay them.
+        if (!employee.getEmployeeType().usesDailyWage()) {
+            return new Result(0, BigDecimal.ZERO.setScale(1), 0, 0, 0, 0, Money.ZERO, Money.ZERO);
+        }
+
         List<WageRate> rates = rateHistory.stream()
                 .sorted(Comparator.comparing(WageRate::getEffectiveFrom).reversed())
                 .toList();
@@ -66,7 +72,11 @@ public class WageCalculator {
             eligibleDays++;
 
             AttendanceStatus status = exceptions.get(day);
-            BigDecimal fraction = status == null ? BigDecimal.ONE : status.dayFraction();
+            // An unmarked day means a full day for permanent workers and nothing
+            // for temporary ones — the whole difference between the two types.
+            BigDecimal fraction = status == null
+                    ? employee.defaultDayFraction()
+                    : status.dayFraction();
 
             if (status != null) {
                 switch (status) {
@@ -74,7 +84,13 @@ public class WageCalculator {
                     case HALF_DAY -> half++;
                     case PAID_LEAVE -> paidLeave++;
                     case OVERTIME -> overtime++;
+                    case PRESENT -> {
+                        // Nothing to count: this is the baseline, not a deviation.
+                    }
                 }
+            } else if (!employee.getEmployeeType().presentByDefault()) {
+                // Unmarked days are unworked days for a temporary worker.
+                absent++;
             }
 
             payableDays = payableDays.add(fraction);

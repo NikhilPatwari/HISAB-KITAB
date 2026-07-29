@@ -8,10 +8,15 @@ import HomePage from './pages/HomePage'
 import EmployeePage from './pages/EmployeePage'
 import AddEntryPage from './pages/AddEntryPage'
 import AttendancePage from './pages/AttendancePage'
-import WagesPage from './pages/WagesPage'
 import PeoplePage from './pages/PeoplePage'
 import EmployeeFormPage from './pages/EmployeeFormPage'
 import EmployersPage from './pages/EmployersPage'
+import WageRunsPage from './pages/WageRunsPage'
+import WageChangePage from './pages/WageChangePage'
+import TasksPage from './pages/TasksPage'
+import TaskDetailPage from './pages/TaskDetailPage'
+import LogWorkPage from './pages/LogWorkPage'
+import WorkPage from './pages/WorkPage'
 import SettingsPage from './pages/SettingsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -36,7 +41,7 @@ export default function App() {
       >
         <Route path="/" element={<HomePage />} />
         <Route path="/attendance" element={<AttendancePage />} />
-        <Route path="/wages" element={<WagesPage />} />
+        <Route path="/work" element={<WorkPage />} />
         <Route path="/people" element={<PeoplePage />} />
       </Route>
 
@@ -54,9 +59,14 @@ export default function App() {
       >
         <Route path="/employees/new" element={<EmployeeFormPage />} />
         <Route path="/employees/:id/edit" element={<EmployeeFormPage />} />
+        <Route path="/employees/:id/wage" element={<WageChangePage />} />
         <Route path="/employees/:id" element={<EmployeePage />} />
         <Route path="/add" element={<AddEntryPage />} />
         <Route path="/employers" element={<EmployersPage />} />
+        <Route path="/wage-runs" element={<WageRunsPage />} />
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:id" element={<TaskDetailPage />} />
+        <Route path="/work/new" element={<LogWorkPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
 

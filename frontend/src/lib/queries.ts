@@ -14,9 +14,14 @@ import type {
   EntryView,
   OrganizationView,
   PagedEntries,
+  LogWorkRequest,
   StatementResponse,
-  WagePreview,
+  TaskRequest,
+  TaskSummary,
+  TaskView,
   WageRunView,
+  WorkRecordView,
+  WorkSummary,
 } from './types'
 
 /** Anything that can shift a balance invalidates these. */
@@ -114,21 +119,6 @@ export function useEmployeeMonth(employeeId: number | undefined, month: string) 
   })
 }
 
-export function useWagePreview(month: string) {
-  return useQuery({
-    queryKey: ['wage-preview', month],
-    queryFn: async () =>
-      (await api.get<WagePreview>('/wage-runs/preview', { params: { month } })).data,
-  })
-}
-
-export function useWageRuns() {
-  return useQuery({
-    queryKey: ['wage-runs'],
-    queryFn: async () => (await api.get<WageRunView[]>('/wage-runs')).data,
-  })
-}
-
 export function useCreateEntry() {
   const invalidate = useLedgerInvalidation()
   return useMutation({
@@ -158,6 +148,19 @@ export function useSaveEmployee(id?: number) {
   })
 }
 
+/**
+ * A dated wage change. Unlike editing the rate on the profile form, this can be
+ * back-dated to when the raise was actually agreed, or set to start later.
+ */
+export function useChangeWage(id: number | undefined) {
+  const invalidate = useLedgerInvalidation()
+  return useMutation({
+    mutationFn: async (body: { dailyRate: number; effectiveFrom: string; note?: string | null }) =>
+      (await api.post<EmployeeDetail>(`/employees/${id}/wage`, body)).data,
+    onSuccess: invalidate,
+  })
+}
+
 export function useMarkAttendance() {
   const client = useQueryClient()
   return useMutation({
@@ -175,20 +178,14 @@ export function useMarkAttendance() {
   })
 }
 
-export function usePostWages() {
-  const client = useQueryClient()
-  const invalidate = useLedgerInvalidation()
-  return useMutation({
-    mutationFn: async (period: string) =>
-      (await api.post<WageRunView>('/wage-runs', { period })).data,
-    onSuccess: () => {
-      invalidate()
-      client.invalidateQueries({ queryKey: ['wage-runs'] })
-      client.invalidateQueries({ queryKey: ['wage-preview'] })
-    },
+export function useWageRuns() {
+  return useQuery({
+    queryKey: ['wage-runs'],
+    queryFn: async () => (await api.get<WageRunView[]>('/wage-runs')).data,
   })
 }
 
+/** Undoes a closed month so its attendance can be corrected and reposted. */
 export function useVoidWageRun() {
   const client = useQueryClient()
   const invalidate = useLedgerInvalidation()
@@ -198,7 +195,84 @@ export function useVoidWageRun() {
     onSuccess: () => {
       invalidate()
       client.invalidateQueries({ queryKey: ['wage-runs'] })
-      client.invalidateQueries({ queryKey: ['wage-preview'] })
+    },
+  })
+}
+
+export function useTasks(activeOnly = false) {
+  return useQuery({
+    queryKey: ['tasks', activeOnly],
+    queryFn: async () =>
+      (await api.get<TaskView[]>('/tasks', { params: { activeOnly } })).data,
+  })
+}
+
+export function useSaveTask(id?: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (body: TaskRequest) =>
+      id
+        ? (await api.put<TaskView>(`/tasks/${id}`, body)).data
+        : (await api.post<TaskView>('/tasks', body)).data,
+    onSuccess: () => client.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useArchiveTask() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/tasks/${id}`)
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useWork(
+  params: { employeeId?: number; taskId?: number; from?: string; to?: string },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['work', params],
+    enabled,
+    queryFn: async () => (await api.get<WorkSummary>('/work', { params })).data,
+  })
+}
+
+/** Cumulative output per worker on one task. */
+export function useTaskSummary(taskId: number | undefined) {
+  return useQuery({
+    queryKey: ['task-summary', taskId],
+    enabled: taskId != null,
+    queryFn: async () => (await api.get<TaskSummary>(`/tasks/${taskId}/summary`)).data,
+  })
+}
+
+/** Logging work changes what a balance is worth, so the ledger views refresh. */
+export function useLogWork() {
+  const client = useQueryClient()
+  const invalidate = useLedgerInvalidation()
+  return useMutation({
+    mutationFn: async (body: LogWorkRequest) =>
+      (await api.post<WorkRecordView>('/work', body)).data,
+    onSuccess: () => {
+      invalidate()
+      client.invalidateQueries({ queryKey: ['work'] })
+      client.invalidateQueries({ queryKey: ['task-summary'] })
+    },
+  })
+}
+
+export function useDeleteWork() {
+  const client = useQueryClient()
+  const invalidate = useLedgerInvalidation()
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/work/${id}`)
+    },
+    onSuccess: () => {
+      invalidate()
+      client.invalidateQueries({ queryKey: ['work'] })
     },
   })
 }

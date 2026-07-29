@@ -2,6 +2,7 @@ package com.hisabkitab.service;
 
 import com.hisabkitab.domain.Employee;
 import com.hisabkitab.domain.EmployeeStatus;
+import com.hisabkitab.domain.EmployeeType;
 import com.hisabkitab.domain.WageRate;
 import com.hisabkitab.exception.ApiExceptions;
 import com.hisabkitab.repository.EmployeeBalanceRow;
@@ -31,15 +32,18 @@ public class EmployeeService {
     private final OrganizationRepository organizations;
     private final WageRateRepository wageRates;
     private final LedgerEntryRepository ledger;
+    private final WageAccrualService accrualService;
 
     public EmployeeService(EmployeeRepository employees,
                            OrganizationRepository organizations,
                            WageRateRepository wageRates,
-                           LedgerEntryRepository ledger) {
+                           LedgerEntryRepository ledger,
+                           WageAccrualService accrualService) {
         this.employees = employees;
         this.organizations = organizations;
         this.wageRates = wageRates;
         this.ledger = ledger;
+        this.accrualService = accrualService;
     }
 
     /**
@@ -52,12 +56,15 @@ public class EmployeeService {
                 ? employees.findByOrganizationIdOrderByNameAsc(organizationId)
                 : employees.findByOrganizationIdAndStatusOrderByNameAsc(organizationId, status);
 
-        Map<Long, BigDecimal> balances = balanceMap(organizationId);
+        Map<Long, BigDecimal> posted = postedBalanceMap(organizationId);
+        Map<Long, BigDecimal> accrued = accrualService.unpostedByEmployee(organizationId);
 
         String needle = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
         return rows.stream()
                 .filter(e -> needle.isEmpty() || matches(e, needle))
-                .map(e -> toSummary(e, balances.getOrDefault(e.getId(), Money.ZERO)))
+                .map(e -> toSummary(e,
+                        posted.getOrDefault(e.getId(), Money.ZERO),
+                        accrued.getOrDefault(e.getId(), Money.ZERO)))
                 .toList();
     }
 
@@ -70,7 +77,8 @@ public class EmployeeService {
     @Transactional(readOnly = true)
     public EmployeeDetail detail(Long organizationId, Long employeeId) {
         Employee employee = require(organizationId, employeeId);
-        BigDecimal balance = Money.nullToZero(ledger.balanceForEmployee(employeeId));
+        BigDecimal postedBalance = Money.nullToZero(ledger.balanceForEmployee(employeeId));
+        BigDecimal unposted = accrualService.unpostedFor(organizationId, employeeId);
         List<WageRateView> history = wageRates.findByEmployeeIdOrderByEffectiveFromDesc(employeeId).stream()
                 .map(r -> new WageRateView(r.getId(), r.getDailyRate(), r.getEffectiveFrom(), r.getNote()))
                 .toList();
@@ -80,12 +88,15 @@ public class EmployeeService {
                 employee.getName(),
                 employee.getPhone(),
                 employee.getVillage(),
+                employee.getEmployeeType(),
                 employee.getDailyWageRate(),
                 employee.getJoinedOn(),
                 employee.getExitedOn(),
                 employee.getStatus().name(),
                 employee.getNotes(),
-                balance,
+                Money.scale(postedBalance.add(unposted)),
+                postedBalance,
+                unposted,
                 history);
     }
 
@@ -168,13 +179,29 @@ public class EmployeeService {
         return detail(organizationId, employeeId);
     }
 
+    /** Ledger sums only — what has actually been written. */
     @Transactional(readOnly = true)
-    public Map<Long, BigDecimal> balanceMap(Long organizationId) {
+    public Map<Long, BigDecimal> postedBalanceMap(Long organizationId) {
         Map<Long, BigDecimal> balances = new HashMap<>();
         for (EmployeeBalanceRow row : ledger.balancesByEmployee(organizationId)) {
             balances.put(row.getEmployeeId(), Money.nullToZero(row.getBalance()));
         }
         return balances;
+    }
+
+    /**
+     * Ledger sums plus wages earned since the last closed month. This is the
+     * figure every screen shows, so a balance is never stale between postings.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> balanceMap(Long organizationId) {
+        Map<Long, BigDecimal> posted = postedBalanceMap(organizationId);
+        Map<Long, BigDecimal> accrued = accrualService.unpostedByEmployee(organizationId);
+
+        Map<Long, BigDecimal> live = new HashMap<>(posted);
+        accrued.forEach((employeeId, wages) ->
+                live.merge(employeeId, wages, BigDecimal::add));
+        return live;
     }
 
     private void recordRate(Employee employee, BigDecimal rate, java.time.LocalDate from, String note) {
@@ -195,11 +222,20 @@ public class EmployeeService {
     }
 
     private void apply(Employee employee, EmployeeRequest request, String code) {
+        EmployeeType type = request.employeeType() == null
+                ? EmployeeType.PERMANENT
+                : request.employeeType();
+
         employee.setCode(code);
         employee.setName(request.name().trim());
         employee.setPhone(blankToNull(request.phone()));
         employee.setVillage(blankToNull(request.village()));
-        employee.setDailyWageRate(Money.scale(request.dailyWageRate()));
+        employee.setEmployeeType(type);
+        // Contract workers earn per unit, so a daily rate would only be a
+        // number nobody uses and the wage engine would silently pay it.
+        employee.setDailyWageRate(type.usesDailyWage()
+                ? Money.scale(request.dailyWageRate())
+                : Money.ZERO);
         employee.setJoinedOn(request.joinedOn());
         employee.setExitedOn(request.exitedOn());
         employee.setNotes(blankToNull(request.notes()));
@@ -223,17 +259,22 @@ public class EmployeeService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    static EmployeeSummary toSummary(Employee employee, BigDecimal balance) {
+    static EmployeeSummary toSummary(Employee employee, BigDecimal posted, BigDecimal accrued) {
+        BigDecimal postedBalance = Money.nullToZero(posted);
+        BigDecimal unposted = Money.nullToZero(accrued);
         return new EmployeeSummary(
                 employee.getId(),
                 employee.getCode(),
                 employee.getName(),
                 employee.getPhone(),
                 employee.getVillage(),
+                employee.getEmployeeType(),
                 employee.getDailyWageRate(),
                 employee.getJoinedOn(),
                 employee.getExitedOn(),
                 employee.getStatus().name(),
-                Money.nullToZero(balance));
+                Money.scale(postedBalance.add(unposted)),
+                postedBalance,
+                unposted);
     }
 }

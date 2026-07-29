@@ -17,6 +17,10 @@ public interface WageRunRepository extends JpaRepository<WageRun, Long> {
     Optional<WageRun> findByOrganizationIdAndPeriodStartAndStatus(
             Long organizationId, LocalDate periodStart, WageRunStatus status);
 
+    /** The most recently closed period, which is where daily accrual picks up. */
+    Optional<WageRun> findTopByOrganizationIdAndStatusOrderByPeriodEndDesc(
+            Long organizationId, WageRunStatus status);
+
     boolean existsByOrganizationIdAndPeriodStartAndStatus(
             Long organizationId, LocalDate periodStart, WageRunStatus status);
 }

@@ -3,10 +3,19 @@ package com.hisabkitab.domain;
 import java.math.BigDecimal;
 
 /**
- * Attendance is recorded by exception. A working day with no attendance row is
- * a full day worked, so this enum only covers the deviations.
+ * Attendance is recorded by exception, but which state is the exception depends
+ * on the employee type: a permanent worker is present unless marked absent, and
+ * a temporary worker earns nothing unless marked present.
+ *
+ * @see com.hisabkitab.domain.EmployeeType
  */
 public enum AttendanceStatus {
+
+    /**
+     * Worked a full day. Redundant for permanent workers, who are present by
+     * default, and the normal mark for temporary workers.
+     */
+    PRESENT(BigDecimal.ONE),
 
     /** Did not work. Earns nothing. */
     ABSENT(new BigDecimal("0.0")),

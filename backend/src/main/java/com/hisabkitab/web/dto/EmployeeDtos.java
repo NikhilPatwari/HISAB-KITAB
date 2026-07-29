@@ -1,5 +1,6 @@
 package com.hisabkitab.web.dto;
 
+import com.hisabkitab.domain.EmployeeType;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -28,6 +29,9 @@ public final class EmployeeDtos {
             @Size(max = 160, message = "Village is too long")
             String village,
 
+            /** Defaults to PERMANENT when omitted, which is what every existing worker is. */
+            EmployeeType employeeType,
+
             @NotNull(message = "Daily wage is required")
             @DecimalMin(value = "0.0", message = "Daily wage cannot be negative")
             BigDecimal dailyWageRate,
@@ -41,18 +45,30 @@ public final class EmployeeDtos {
             String notes) {
     }
 
-    /** Row on the home list. {@code balance} is signed: negative means the employee owes the farm. */
+    /**
+     * Row on the home list.
+     *
+     * @param balance       live and signed — negative means the employee owes the
+     *                      farm. Already includes {@code unpostedWages}.
+     * @param postedBalance the same figure counting only entries written to the
+     *                      ledger, for when the split needs showing
+     * @param unpostedWages earned since the last closed month, derived from
+     *                      attendance rather than stored
+     */
     public record EmployeeSummary(
             Long id,
             String code,
             String name,
             String phone,
             String village,
+            EmployeeType employeeType,
             BigDecimal dailyWageRate,
             LocalDate joinedOn,
             LocalDate exitedOn,
             String status,
-            BigDecimal balance) {
+            BigDecimal balance,
+            BigDecimal postedBalance,
+            BigDecimal unpostedWages) {
     }
 
     public record EmployeeDetail(
@@ -61,12 +77,15 @@ public final class EmployeeDtos {
             String name,
             String phone,
             String village,
+            EmployeeType employeeType,
             BigDecimal dailyWageRate,
             LocalDate joinedOn,
             LocalDate exitedOn,
             String status,
             String notes,
             BigDecimal balance,
+            BigDecimal postedBalance,
+            BigDecimal unpostedWages,
             List<WageRateView> rateHistory) {
     }
 

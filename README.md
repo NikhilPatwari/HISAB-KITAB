@@ -152,6 +152,33 @@ cd frontend && npm install && npm run dev
 Serves on `http://localhost:5173` and proxies `/api` to port 8080, so there are no CORS
 round trips in development.
 
+### Opening it on a phone
+
+The dev server listens on all interfaces, and Vite reaches the backend server-side, so the
+phone only needs port 5173 — the backend never has to leave the machine.
+
+Find this machine's LAN address:
+
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object IPAddress, InterfaceAlias
+```
+
+Allow it through the firewall once, from an **admin** PowerShell. `-RemoteAddress LocalSubnet`
+keeps it reachable only from the same network, which holds whether Windows has the wifi
+marked Private or Public:
+
+```powershell
+New-NetFirewallRule -DisplayName "Vite dev server" -Direction Inbound -LocalPort 5173 -Protocol TCP -Action Allow -Profile Any -RemoteAddress LocalSubnet
+```
+
+Then open `http://<that-address>:5173` on the phone, on the same wifi.
+
+To undo it later:
+
+```powershell
+Remove-NetFirewallRule -DisplayName "Vite dev server"
+```
+
 ### Troubleshooting
 
 **403 with `Invalid CORS request` on login.** The browser's `Origin` is not in

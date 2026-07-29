@@ -76,6 +76,12 @@ public final class LedgerDtos {
             Long wageRunId) {
     }
 
+    /**
+     * @param closingBalance running total of the rows shown, ledger only
+     * @param unpostedWages  earned since the last closed month and not yet a row
+     * @param liveBalance    closingBalance plus unpostedWages — what the worker
+     *                       actually stands at today
+     */
     public record StatementResponse(
             Long employeeId,
             String employeeName,
@@ -85,6 +91,9 @@ public final class LedgerDtos {
             BigDecimal closingBalance,
             BigDecimal totalGivenOut,
             BigDecimal totalEarned,
+            BigDecimal unpostedWages,
+            LocalDate unpostedSince,
+            BigDecimal liveBalance,
             List<StatementRow> rows) {
     }
 

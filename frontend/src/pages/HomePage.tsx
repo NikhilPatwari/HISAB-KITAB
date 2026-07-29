@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ChevronRight, Search, Settings, UserPlus, Users } from 'lucide-react'
+import { ChevronRight, Plus, Search, Settings, UserPlus, Users } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { useDashboard, useEmployees } from '@/lib/queries'
 import { absMoney, money } from '@/lib/format'
@@ -74,7 +74,14 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="sticky top-0 z-10 mt-4 bg-slate-50/95 px-4 pb-2 pt-2 backdrop-blur">
+      {/* Inline rather than a floating button, so it never covers a worker row. */}
+      <div className="p-4 pb-1">
+        <button type="button" className="btn-primary w-full" onClick={() => navigate('/add')}>
+          <Plus className="h-5 w-5" /> Add entry
+        </button>
+      </div>
+
+      <div className="sticky top-0 z-10 mt-2 bg-slate-50/95 px-4 pb-2 pt-2 backdrop-blur">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input

@@ -31,10 +31,13 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Monthly wage posting.
@@ -46,6 +49,8 @@ import java.util.Map;
  */
 @Service
 public class WageService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WageService.class);
 
     private static final DateTimeFormatter MONTH_LABEL =
             DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH);
@@ -59,6 +64,8 @@ public class WageService {
     private final OrganizationService organizationService;
     private final LedgerService ledgerService;
     private final WageCalculator calculator;
+    private final WageAccrualService accrualService;
+    private final com.hisabkitab.repository.WorkRecordRepository workRecords;
 
     public WageService(WageRunRepository wageRuns,
                        EmployeeRepository employees,
@@ -68,7 +75,11 @@ public class WageService {
                        OrganizationRepository organizations,
                        OrganizationService organizationService,
                        LedgerService ledgerService,
-                       WageCalculator calculator) {
+                       WageCalculator calculator,
+                       WageAccrualService accrualService,
+                       com.hisabkitab.repository.WorkRecordRepository workRecords) {
+        this.accrualService = accrualService;
+        this.workRecords = workRecords;
         this.wageRuns = wageRuns;
         this.employees = employees;
         this.attendance = attendance;
@@ -126,9 +137,68 @@ public class WageService {
 
     @Transactional
     public WageRunView post(AuthPrincipal principal, PostWageRequest request) {
+        return postInternal(principal, request.period(), request.employeeIds(), false);
+    }
+
+    /**
+     * Closes every month that has fully ended and is not yet posted, so the
+     * employer never has to remember to do it. Balances are already live via
+     * {@link WageAccrualService}; this just makes the history permanent and
+     * keeps the accrual window short.
+     *
+     * @return how many months were closed
+     */
+    @Transactional
+    public int autoCloseCompletedMonths(AuthPrincipal principal) {
+        Long organizationId = principal.organizationId();
+        YearMonth current = YearMonth.from(organizationService.today(organizationId));
+
+        LocalDate firstJoin = employees.findByOrganizationIdOrderByNameAsc(organizationId).stream()
+                .map(Employee::getJoinedOn)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+        if (firstJoin == null) {
+            return 0;
+        }
+
+        // Every month already closed, fetched once. Scanning for gaps rather than
+        // resuming after the newest run is what lets a voided month be picked up
+        // and reposted — otherwise correcting an old month would drop it forever.
+        Set<LocalDate> alreadyClosed = wageRuns
+                .findByOrganizationIdOrderByPeriodStartDesc(organizationId).stream()
+                .filter(run -> run.getStatus() == WageRunStatus.POSTED)
+                .map(WageRun::getPeriodStart)
+                .collect(Collectors.toSet());
+
+        int closed = 0;
+        int examined = 0;
+        YearMonth month = YearMonth.from(firstJoin);
+        // Bounded so a long-dormant database cannot spin through decades.
+        while (month.isBefore(current) && examined < 120) {
+            examined++;
+            if (!alreadyClosed.contains(month.atDay(1))) {
+                postInternal(principal, month, null, true);
+                closed++;
+            }
+            month = month.plusMonths(1);
+        }
+        if (closed > 0) {
+            log.info("Auto-closed {} wage month(s) for organization {}", closed, organizationId);
+        }
+        return closed;
+    }
+
+    /**
+     * @param allowEmpty when true a month with nothing to pay still records a
+     *                   run, so the month counts as closed and is not retried
+     *                   on every request
+     */
+    private WageRunView postInternal(AuthPrincipal principal,
+                                     YearMonth period,
+                                     List<Long> employeeIds,
+                                     boolean allowEmpty) {
         Long organizationId = principal.organizationId();
         Organization org = organizationService.require(organizationId);
-        YearMonth period = request.period();
         LocalDate start = period.atDay(1);
         LocalDate end = period.atEndOfMonth();
 
@@ -142,12 +212,12 @@ public class WageService {
         }
 
         List<Employee> staff = employees.findEmployedDuring(organizationId, start, end);
-        if (request.employeeIds() != null && !request.employeeIds().isEmpty()) {
+        if (employeeIds != null && !employeeIds.isEmpty()) {
             staff = staff.stream()
-                    .filter(e -> request.employeeIds().contains(e.getId()))
+                    .filter(e -> employeeIds.contains(e.getId()))
                     .toList();
         }
-        if (staff.isEmpty()) {
+        if (staff.isEmpty() && !allowEmpty) {
             throw new ApiExceptions.BadRequestException("No employees were on the books that month");
         }
 
@@ -166,7 +236,32 @@ public class WageService {
         int counted = 0;
         String label = MONTH_LABEL.format(start);
 
+        // Piece-rate earnings for the same period. Anyone can log work, whatever
+        // their employee type, so this is keyed off records rather than type.
+        Map<Long, BigDecimal> pieceWork = new HashMap<>();
+        for (var row : workRecords.totalsByEmployee(organizationId, start, end)) {
+            pieceWork.put(row.getEmployeeId(), Money.nullToZero(row.getTotal()));
+        }
+
         for (Employee employee : staff) {
+            BigDecimal earned = pieceWork.getOrDefault(employee.getId(), Money.ZERO);
+            if (earned.signum() > 0) {
+                LedgerEntry entry = new LedgerEntry();
+                entry.setOrganization(run.getOrganization());
+                entry.setEmployee(employee);
+                entry.setWageRun(run);
+                entry.setEntryType(EntryType.PIECE_WORK);
+                entry.setAmount(earned);
+                entry.setSignedAmount(earned);
+                entry.setEntryDate(end);
+                entry.setNote("Work completed in " + label);
+                entry.setCreatedBy(ledgerService.userRef(principal.userId()));
+                ledger.save(entry);
+
+                total = total.add(earned);
+                counted++;
+            }
+
             WageCalculator.Result r = results.get(employee.getId());
             if (r.amount().signum() <= 0) {
                 continue;
@@ -188,7 +283,7 @@ public class WageService {
             counted++;
         }
 
-        if (counted == 0) {
+        if (counted == 0 && !allowEmpty) {
             throw new ApiExceptions.BadRequestException(
                     "Nothing to post for " + label + " — no payable days were found.");
         }

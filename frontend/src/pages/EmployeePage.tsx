@@ -1,10 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { format, startOfMonth, startOfYear, subMonths } from 'date-fns'
+import { endOfMonth, format, parseISO, startOfMonth, startOfYear, subMonths } from 'date-fns'
 import {
   ArrowDownLeft,
   ArrowUpRight,
   CalendarDays,
+  ClipboardList,
   Pencil,
   Phone,
   Plus,
@@ -12,7 +13,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
-import { useEmployee, useEmployeeMonth, useStatement, useVoidEntry } from '@/lib/queries'
+import { useEmployee, useEmployeeMonth, useStatement, useVoidEntry, useWork } from '@/lib/queries'
 import {
   absMoney,
   currentYearMonth,
@@ -26,7 +27,7 @@ import {
 import { errorMessage } from '@/lib/api'
 import { BackButton, PageHeader } from '@/components/AppLayout'
 import { Avatar, EmptyState, ErrorNote, SectionTitle, Spinner } from '@/components/ui'
-import type { StatementRow } from '@/lib/types'
+import { EMPLOYEE_TYPES, type StatementRow } from '@/lib/types'
 
 type Tab = 'ledger' | 'attendance' | 'about'
 
@@ -75,18 +76,24 @@ export default function EmployeePage() {
   const employee = useEmployee(employeeId)
   const statement = useStatement(employeeId, dateWindow)
   const attendance = useEmployeeMonth(employeeId, month)
+  const work = useWork({
+    employeeId,
+    from: `${month}-01`,
+    to: format(endOfMonth(parseISO(`${month}-01`)), 'yyyy-MM-dd'),
+  })
   const voidEntry = useVoidEntry()
 
   if (employee.isLoading) return <Spinner label="Loading" />
   if (!employee.data) return <EmptyState title="Worker not found" />
 
   const person = employee.data
+  const isContract = person.employeeType === 'CONTRACT'
   const owesYou = person.balance < 0
   const settled = Math.abs(person.balance) < 0.005
 
   async function onVoid(row: StatementRow) {
     if (row.wageRunId) {
-      setError('This is a posted wage entry. Void the whole wage run from the Wages tab.')
+      setError('This is a posted wage entry for a closed month and cannot be voided on its own.')
       return
     }
     if (!window.confirm(`Void this entry of ${absMoney(row.amount)}? It stays on the record as cancelled.`)) {
@@ -128,9 +135,20 @@ export default function EmployeePage() {
           {settled ? 'All settled up' : owesYou ? `${person.name} owes you` : `You owe ${person.name}`}
         </p>
         <p className="mt-0.5 text-3xl font-bold tracking-tight">{absMoney(person.balance, true)}</p>
+        {person.unpostedWages > 0 && (
+          <p className="mt-1 text-xs font-medium text-brand-100">
+            includes {absMoney(person.unpostedWages)} earned this month
+          </p>
+        )}
         <p className="mt-1 text-xs text-brand-100">
-          {money(person.dailyWageRate)} per day · joined {relativeDate(person.joinedOn)}
+          {person.employeeType === 'CONTRACT'
+            ? 'Paid per unit of work'
+            : `${money(person.dailyWageRate)} per day`}{' '}
+          · joined {relativeDate(person.joinedOn)}
         </p>
+        <span className="mt-2 inline-block rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold">
+          {EMPLOYEE_TYPES.find((t) => t.value === person.employeeType)?.label}
+        </span>
 
         <div className="mt-4 flex justify-center gap-2">
           <QuickAction
@@ -142,6 +160,11 @@ export default function EmployeePage() {
             icon={<ArrowDownLeft className="h-4 w-4" />}
             label="Record repayment"
             onClick={() => navigate(`/add?employeeId=${person.id}&type=REPAYMENT`)}
+          />
+          <QuickAction
+            icon={<ClipboardList className="h-4 w-4" />}
+            label="Log work"
+            onClick={() => navigate(`/work/new?employeeId=${person.id}`)}
           />
         </div>
       </section>
@@ -158,7 +181,8 @@ export default function EmployeePage() {
                 : 'border-transparent text-slate-400'
             }`}
           >
-            {value}
+            {/* Contract workers have no attendance, so that slot shows their work. */}
+            {value === 'attendance' && isContract ? 'work' : value}
           </button>
         ))}
       </nav>
@@ -272,6 +296,31 @@ export default function EmployeePage() {
               )}
 
               <SectionTitle>Statement</SectionTitle>
+
+              {/* Not a ledger row yet — it becomes one when the month closes. */}
+              {statement.data.unpostedWages > 0 && (
+                <div className="flex items-start gap-3 border-b border-dashed border-slate-200 bg-credit-50/50 px-4 py-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-credit-50 text-credit-600">
+                    <ArrowDownLeft className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-slate-900">Earned so far</p>
+                    <p className="truncate text-xs text-slate-500">
+                      since {relativeDate(statement.data.unpostedSince)} · posts when the month
+                      closes
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="font-semibold text-credit-600">
+                      +{absMoney(statement.data.unpostedWages)}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      bal {absMoney(statement.data.liveBalance)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <ul className="divide-y divide-slate-100 bg-white">
                 {[...statement.data.rows].reverse().map((row) => (
                   <li key={row.id} className="flex items-start gap-3 px-4 py-3">
@@ -352,7 +401,53 @@ export default function EmployeePage() {
             />
           </div>
 
-          {attendance.isLoading ? (
+          {isContract ? (
+            work.isLoading ? (
+              <Spinner />
+            ) : (work.data?.records.length ?? 0) === 0 ? (
+              <EmptyState
+                icon={<ClipboardList className="h-9 w-9" />}
+                title="No work logged"
+                hint="Units completed in this month will appear here."
+                action={
+                  <button
+                    className="btn-primary mt-1"
+                    onClick={() => navigate(`/work/new?employeeId=${person.id}`)}
+                  >
+                    <ClipboardList className="h-4 w-4" /> Log work
+                  </button>
+                }
+              />
+            ) : (
+              <>
+                <div className="card mb-3 flex items-center justify-between p-4">
+                  <span className="text-sm text-slate-500">Earned in {monthLabel(month)}</span>
+                  <span className="text-lg font-bold text-credit-600">
+                    {absMoney(work.data?.totalAmount ?? 0)}
+                  </span>
+                </div>
+                <ul className="card divide-y divide-slate-100 overflow-hidden">
+                  {work.data?.records.map((record) => (
+                    <li key={record.id} className="px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm font-semibold text-slate-900">
+                          {record.taskName}
+                        </p>
+                        <span className="shrink-0 font-semibold text-credit-600">
+                          {absMoney(record.amount)}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs text-slate-500">
+                        {record.quantity} {record.unitOfWork} × {money(record.unitPrice)} ·{' '}
+                        {relativeDate(record.workDate)}
+                        {record.location && ` · ${record.location}`}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )
+          ) : attendance.isLoading ? (
             <Spinner />
           ) : attendance.data ? (
             <>
@@ -421,13 +516,33 @@ export default function EmployeePage() {
               }
             />
             <Row label="Village" value={person.village ?? '—'} />
-            <Row label="Daily wage" value={money(person.dailyWageRate, true)} />
+            <Row
+              label="Paid as"
+              value={EMPLOYEE_TYPES.find((t) => t.value === person.employeeType)?.description ?? '—'}
+            />
+            {person.employeeType !== 'CONTRACT' && (
+              <Row label="Daily wage" value={money(person.dailyWageRate, true)} />
+            )}
             <Row label="Joined" value={relativeDate(person.joinedOn)} />
             <Row label="Status" value={person.status === 'ACTIVE' ? 'Working' : 'Left'} />
             {person.notes && <Row label="Notes" value={person.notes} />}
           </dl>
 
-          <SectionTitle>Wage history</SectionTitle>
+          <SectionTitle
+            action={
+              isOwner ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/employees/${person.id}/wage`)}
+                  className="text-xs font-semibold text-brand-700"
+                >
+                  Change wage
+                </button>
+              ) : undefined
+            }
+          >
+            Wage history
+          </SectionTitle>
           <ul className="card divide-y divide-slate-100 overflow-hidden">
             {person.rateHistory.map((rate) => (
               <li key={rate.id} className="flex items-center justify-between px-4 py-3 text-sm">
